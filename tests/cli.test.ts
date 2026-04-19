@@ -1,9 +1,8 @@
-import type { Command } from "commander";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { buildCli } from "../src/buildCli.js";
+import { createDependencies, type CliDependencies } from "../src/buildCli.js";
+import { runCli as executeCli } from "../src/cli.js";
 
-import type { CliDependencies } from "../src/buildCli.js";
 import type { ParliamentClient } from "../src/lib/parliamentClient.js";
 
 const notImplemented = (name: string): never => {
@@ -23,11 +22,25 @@ const createStubClient = (overrides: Partial<ParliamentClient> = {}): Parliament
   ...overrides
 });
 
-const applyExitOverrideRecursively = (command: Command): void => {
-  command.exitOverride();
-  command.commands.forEach((subcommand) => {
-    applyExitOverrideRecursively(subcommand);
+const createJsonResponse = (value: unknown, init: ResponseInit = {}): Response =>
+  new Response(JSON.stringify(value), {
+    headers: {
+      "content-type": "application/json"
+    },
+    status: 200,
+    ...init
   });
+
+const toFetchUrl = (input: { url: string } | string | URL): string => {
+  if (typeof input === "string") {
+    return input;
+  }
+
+  if (input instanceof URL) {
+    return input.toString();
+  }
+
+  return input.url;
 };
 
 const runCli = async (
@@ -39,7 +52,7 @@ const runCli = async (
   const cliDependencies: CliDependencies = {
     client: dependencies.client ?? createStubClient(),
     runtime: {
-      fetchImplementation: fetch,
+      fetchImplementation: dependencies.runtime?.fetchImplementation ?? fetch,
       stdoutIsTTY: dependencies.runtime?.stdoutIsTTY ?? false,
       writeStderr: (text) => {
         stderrChunks.push(text);
@@ -49,32 +62,13 @@ const runCli = async (
       }
     }
   };
-  const previousExitCode = process.exitCode;
+  const exitCode = await executeCli(args, cliDependencies);
 
-  process.exitCode = undefined;
-
-  try {
-    const cli = buildCli(cliDependencies);
-    applyExitOverrideRecursively(cli);
-
-    try {
-      await cli.parseAsync(args, {
-        from: "user"
-      });
-    } catch (error) {
-      if (!(error instanceof Error) || !("code" in error)) {
-        throw error;
-      }
-    }
-
-    return {
-      exitCode: process.exitCode ?? 0,
-      stderr: stderrChunks.join(""),
-      stdout: stdoutChunks.join("")
-    };
-  } finally {
-    process.exitCode = previousExitCode;
-  }
+  return {
+    exitCode,
+    stderr: stderrChunks.join(""),
+    stdout: stdoutChunks.join("")
+  };
 };
 
 describe("parliament cli", () => {
@@ -105,6 +99,37 @@ describe("parliament cli", () => {
         },
         resolved: {
           billId: 3973
+        }
+      },
+      ok: true
+    });
+  });
+
+  it("maps numeric house codes to human-readable house labels", async () => {
+    const result = await runCli(["member", "4514", "--json"], {
+      client: createStubClient({
+        getMember: async () => ({
+          id: 4514,
+          latestHouseMembership: {
+            house: 1
+          },
+          latestParty: {
+            name: "Labour"
+          },
+          nameDisplayAs: "Sir Keir Starmer",
+          nameFullTitle: "Rt Hon Sir Keir Starmer MP",
+          thumbnailUrl: "https://members-api.parliament.uk/api/Members/4514/Thumbnail"
+        })
+      })
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      command: "member",
+      data: {
+        member: {
+          house: "Commons",
+          id: 4514
         }
       },
       ok: true
@@ -203,6 +228,117 @@ describe("parliament cli", () => {
       },
       ok: true
     });
+  });
+
+  it("returns structured json for missing required arguments in json mode", async () => {
+    const result = await runCli(["bill", "--json"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      command: "bill",
+      error: {
+        code: "INVALID_INPUT",
+        message: "missing required argument 'queryOrId'",
+        retryable: false
+      },
+      ok: false
+    });
+  });
+
+  it("returns structured json for conflicting output flags", async () => {
+    const result = await runCli(["bill", "3973", "--json", "--text"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      command: "bill",
+      error: {
+        code: "INVALID_INPUT",
+        message: "Choose either --json or --text, not both.",
+        retryable: false
+      },
+      ok: false
+    });
+  });
+
+  it("rejects whitespace-only bill search queries", async () => {
+    const result = await runCli(["search", "bills", "   ", "--json"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      command: "search-bills",
+      error: {
+        code: "INVALID_INPUT",
+        message: "Query must not be empty.",
+        retryable: false
+      },
+      ok: false
+    });
+  });
+
+  it("does not write dotenv banners before successful json output", async () => {
+    const stdoutWrites: string[] = [];
+    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(
+      ((chunk: string | Uint8Array) => {
+        stdoutWrites.push(
+          typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8")
+        );
+
+        return true;
+      }) as unknown as typeof process.stdout.write
+    );
+    const cliDependencies = createDependencies(
+      (async (input) => {
+        const url = toFetchUrl(input);
+
+        if (url.endsWith("/api/v1/Bills/3973")) {
+          return createJsonResponse({
+            billId: 3973,
+            currentHouse: "Commons",
+            currentStage: {
+              description: "2nd reading"
+            },
+            isAct: false,
+            isDefeated: false,
+            lastUpdate: "2025-09-16T17:08:18.2184786",
+            shortTitle: "A34 Slip Road Safety (East Ilsley and Beedon) Bill"
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL in test: ${url}`);
+      }) as typeof fetch,
+      false
+    );
+    const stdoutChunks: string[] = [];
+    const stderrChunks: string[] = [];
+
+    cliDependencies.runtime.writeStdout = (text) => {
+      stdoutChunks.push(text);
+    };
+    cliDependencies.runtime.writeStderr = (text) => {
+      stderrChunks.push(text);
+    };
+
+    try {
+      const exitCode = await executeCli(["bill", "3973", "--json"], cliDependencies);
+
+      expect(exitCode).toBe(0);
+      expect(stderrChunks.join("")).toBe("");
+      expect(stdoutWrites.join("")).toBe("");
+      expect(JSON.parse(stdoutChunks.join(""))).toMatchObject({
+        command: "bill",
+        data: {
+          bill: {
+            billId: 3973
+          }
+        },
+        ok: true
+      });
+    } finally {
+      writeSpy.mockRestore();
+    }
   });
 
   it("defaults to json in non-tty mode", async () => {

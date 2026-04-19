@@ -4,12 +4,18 @@ import type { BillSummary, MemberSummary } from "../types.js";
 
 const normalize = (value: string): string => value.trim().toLowerCase();
 
-export const parseQueryOrId = (value: string): { id: number | null; query: string } => {
+export const normalizeRequiredQuery = (value: string): string => {
   const query = value.trim();
 
   if (query.length === 0) {
     throw createAppError("INVALID_INPUT", "Query must not be empty.");
   }
+
+  return query;
+};
+
+export const parseQueryOrId = (value: string): { id: number | null; query: string } => {
+  const query = normalizeRequiredQuery(value);
 
   if (!/^\d+$/u.test(query)) {
     return {

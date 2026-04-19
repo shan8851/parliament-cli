@@ -8,7 +8,9 @@ export interface ParliamentCliConfig {
 }
 
 export const loadConfig = (): ParliamentCliConfig => {
-  loadDotenv();
+  loadDotenv({
+    quiet: true
+  });
 
   return {
     billsApiBaseUrl:

@@ -1,11 +1,14 @@
 import type { Command } from "commander";
 
 import { JSON_SCHEMA_VERSION } from "./constants.js";
-import { createAppError, toAppError } from "./errors.js";
+import { createAppError, toAppError, type AppError } from "./errors.js";
 
 import type { CommandRuntime, ErrorEnvelope, OutputMode, OutputOptions, SuccessEnvelope } from "../types.js";
 
-const writeJson = (runtime: CommandRuntime, value: unknown): void => {
+const writeJson = (
+  runtime: Pick<CommandRuntime, "writeStdout">,
+  value: unknown
+): void => {
   runtime.writeStdout(`${JSON.stringify(value, null, 2)}\n`);
 };
 
@@ -45,6 +48,34 @@ export const withGlobalOutputOptions = <TOptions extends OutputOptions>(
   };
 };
 
+export const writeCommandError = (
+  commandName: string,
+  error: AppError,
+  requestedAt: string,
+  outputMode: OutputMode,
+  runtime: Pick<CommandRuntime, "writeStderr" | "writeStdout">
+): void => {
+  if (outputMode === "json") {
+    const envelope: ErrorEnvelope = {
+      command: commandName,
+      error: {
+        code: error.code,
+        ...(error.details === undefined ? {} : { details: error.details }),
+        message: error.message,
+        retryable: error.retryable
+      },
+      ok: false,
+      requestedAt,
+      schemaVersion: JSON_SCHEMA_VERSION
+    };
+
+    writeJson(runtime, envelope);
+    return;
+  }
+
+  runtime.writeStderr(`${error.message}\n`);
+};
+
 export const runCommand = async <TData>(
   commandName: string,
   options: OutputOptions,
@@ -53,9 +84,10 @@ export const runCommand = async <TData>(
   formatText: (data: TData) => string
 ): Promise<void> => {
   const requestedAt = new Date().toISOString();
-  const outputMode = getOutputMode(options, runtime);
+  let outputMode: OutputMode = options.json ? "json" : runtime.stdoutIsTTY ? "text" : "json";
 
   try {
+    outputMode = getOutputMode(options, runtime);
     const data = await handler();
     const envelope: SuccessEnvelope<TData> = {
       command: commandName,
@@ -73,26 +105,8 @@ export const runCommand = async <TData>(
     runtime.writeStdout(`${formatText(data)}\n`);
   } catch (error) {
     const appError = toAppError(error);
-    const envelope: ErrorEnvelope = {
-      command: commandName,
-      error: {
-        code: appError.code,
-        ...(appError.details === undefined ? {} : { details: appError.details }),
-        message: appError.message,
-        retryable: appError.retryable
-      },
-      ok: false,
-      requestedAt,
-      schemaVersion: JSON_SCHEMA_VERSION
-    };
 
     process.exitCode = appError.exitCode;
-
-    if (outputMode === "json") {
-      writeJson(runtime, envelope);
-      return;
-    }
-
-    runtime.writeStderr(`${appError.message}\n`);
+    writeCommandError(commandName, appError, requestedAt, outputMode, runtime);
   }
 };

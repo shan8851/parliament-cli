@@ -1,5 +1,10 @@
 import type { BillSummary, DivisionSummary, MemberSummary, QuestionSummary } from "../types.js";
 
+const HOUSE_LABEL_BY_NUMERIC_CODE: Record<number, string> = {
+  1: "Commons",
+  2: "Lords"
+};
+
 export interface BillApiLike {
   billId: number;
   currentHouse?: string | null | undefined;
@@ -52,10 +57,7 @@ export const toBillSummary = (bill: BillApiLike): BillSummary => ({
 });
 
 export const toMemberSummary = (member: MemberApiLike): MemberSummary => ({
-  house:
-    member.latestHouseMembership?.house === undefined || member.latestHouseMembership?.house === null
-      ? null
-      : String(member.latestHouseMembership.house),
+  house: normalizeMemberHouse(member.latestHouseMembership?.house),
   id: member.id,
   nameDisplayAs: member.nameDisplayAs,
   nameFullTitle: member.nameFullTitle ?? null,
@@ -78,3 +80,29 @@ export const toDivisionSummary = (division: DivisionApiLike): DivisionSummary =>
   number: division.Number,
   title: division.Title
 });
+
+const normalizeMemberHouse = (value: string | number | null | undefined): string | null => {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  if (typeof value === "number") {
+    return HOUSE_LABEL_BY_NUMERIC_CODE[value] ?? String(value);
+  }
+
+  const trimmedValue = value.trim();
+
+  if (trimmedValue.length === 0) {
+    return null;
+  }
+
+  if (trimmedValue === "1") {
+    return "Commons";
+  }
+
+  if (trimmedValue === "2") {
+    return "Lords";
+  }
+
+  return trimmedValue;
+};

@@ -4,6 +4,7 @@ import { parseNonNegativeInteger, parsePositiveInteger } from "../lib/commandUti
 import { DEFAULT_PAGE_SIZE } from "../lib/constants.js";
 import { toBillSummary } from "../lib/normalize.js";
 import { runCommand, withGlobalOutputOptions } from "../lib/output.js";
+import { normalizeRequiredQuery } from "../lib/resolve.js";
 
 import type { CliDependencies } from "../buildCli.js";
 import type { BillSummary, PaginationMeta } from "../types.js";
@@ -46,7 +47,7 @@ export const registerSearchBillsCommand = (
         withGlobalOutputOptions(command, options),
         dependencies.runtime,
         async (): Promise<SearchBillsData> => {
-          const normalizedQuery = query.trim();
+          const normalizedQuery = normalizeRequiredQuery(query);
           const take = options.take ?? DEFAULT_PAGE_SIZE;
           const skip = options.skip ?? 0;
           const result = await dependencies.client.searchBills({
