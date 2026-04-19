@@ -1,6 +1,6 @@
 {
   "name": "@shan8851/parliament-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "UK Parliament CLI for agents and humans",
   "type": "module",
   "bin": {
