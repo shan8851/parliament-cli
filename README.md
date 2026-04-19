@@ -6,6 +6,10 @@
 
 UK Parliament in your terminal. Built for AI agents, still pleasant for humans.
 
+- Website: https://www.parliment-cli.xyz
+- npm: https://www.npmjs.com/package/@shan8851/parliament-cli
+- UI repo: https://github.com/shan8851/parliament-cli-ui
+
 ```bash
 parliament bill 3973
 parliament bill "renters rights"
@@ -21,6 +25,10 @@ parliament questions "transport"
 ```bash
 npm install -g @shan8851/parliament-cli
 ```
+
+## Auth
+
+**No API key or auth required.** `parliament-cli` uses public UK Parliament endpoints by default.
 
 Or from source:
 
