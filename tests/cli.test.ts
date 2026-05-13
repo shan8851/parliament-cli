@@ -280,17 +280,15 @@ describe("parliament cli", () => {
 
   it("does not write dotenv banners before successful json output", async () => {
     const stdoutWrites: string[] = [];
-    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(
-      ((chunk: string | Uint8Array) => {
-        stdoutWrites.push(
-          typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8")
-        );
+    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      stdoutWrites.push(
+        typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8")
+      );
 
-        return true;
-      }) as unknown as typeof process.stdout.write
-    );
+      return true;
+    });
     const cliDependencies = createDependencies(
-      (async (input) => {
+      async (input) => {
         const url = toFetchUrl(input);
 
         if (url.endsWith("/api/v1/Bills/3973")) {
@@ -308,7 +306,7 @@ describe("parliament cli", () => {
         }
 
         throw new Error(`Unexpected fetch URL in test: ${url}`);
-      }) as typeof fetch,
+      },
       false
     );
     const stdoutChunks: string[] = [];
