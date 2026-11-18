@@ -7,7 +7,6 @@
 UK Parliament in your terminal. Built for AI agents, still pleasant for humans.
 
 - npm: https://www.npmjs.com/package/@shan8851/parliament-cli
-- UI repo: https://github.com/shan8851/parliament-cli-ui
 
 ```bash
 parliament bill 3973
