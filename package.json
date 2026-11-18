@@ -38,7 +38,7 @@
     "type": "git",
     "url": "git+https://github.com/shan8851/parliament-cli.git"
   },
-  "homepage": "https://www.parliment-cli.xyz",
+  "homepage": "https://github.com/shan8851/parliament-cli#readme",
   "bugs": {
     "url": "https://github.com/shan8851/parliament-cli/issues"
   },
